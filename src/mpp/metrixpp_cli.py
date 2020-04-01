@@ -31,31 +31,34 @@ def execute_command(command: str, paths, args) -> int:
 
 def main():
 
-    parser = argparse.ArgumentParser(
-        "metrixpp",
-        description="Analyze C/C++ and Java code to determine code metrics")
+    p = str(Path(__file__).parent.resolve())
+    os.environ['METRIXPLUSPLUS_INSTALL_DIR'] = p
 
-    subparsers = parser.add_subparsers(required=True, dest='command')
+    # parser = argparse.ArgumentParser(
+    #     "metrixpp",
+    #     description="Analyze C/C++ and Java code to determine code metrics")
 
-    # collect
-    parser_collect = subparsers.add_parser(
-        "collect", help="collect code metrics")
+    # subparsers = parser.add_subparsers(required=True, dest='command')
 
-    parser_collect.add_argument('metrics', metavar='m', type=str, nargs='+',
-                                help='metrics to collect')
+    # # collect
+    # parser_collect = subparsers.add_parser(
+    #     "collect", help="collect code metrics")
 
-    # view
-    parser_view = subparsers.add_parser(
-        "view", help="view collected code metrics")
+    # parser_collect.add_argument('metrics', metavar='m', type=str, nargs='+',
+    #                             help='metrics to collect')
 
-    # limit
-    parser_limit = subparsers.add_parser(
-        "limit", help="limit metrics")
+    # # view
+    # parser_view = subparsers.add_parser(
+    #     "view", help="view collected code metrics")
 
-    args = parser.parse_args()
+    # # limit
+    # parser_limit = subparsers.add_parser(
+    #     "limit", help="limit metrics")
 
-    os.environ['METRIXPLUSPLUS_INSTALL_DIR'] = str(
-        Path(__file__).parent.resolve())
+    # args = parser.parse_args()
+
+    # os.environ['METRIXPLUSPLUS_INSTALL_DIR'] = str(
+    #     Path(__file__).parent.resolve())
 
     # exemode = None
     # exemode = '-R'
@@ -71,8 +74,9 @@ def main():
     #     exit(subprocess.call(itertools.chain(
     #         [sys.executable], profile_args, [sys.argv[0], '-D'], sys.argv[1:])))
 
-    command = args.command
-    args = args.metrics
+    command = sys.argv[1]  # TODO
+    args = sys.argv[2:]
+    #args = args.metrics
     logger.info(f"program is executing command: {command}")
 
     mpp_paths = []
@@ -108,3 +112,5 @@ if __name__ == '__main__':
     paths = []
 
     execute_command("collect", paths, metrics)
+
+    execute_command("view", [], [])
