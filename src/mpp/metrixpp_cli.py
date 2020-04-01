@@ -17,58 +17,68 @@ import argparse
 import mpp.log
 import mpp.internal.loader
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('metrixpp')
+
+
+def execute_command(command: str, paths, args) -> int:
+    loader = mpp.internal.loader.Loader()
+    args = loader.load(command, paths, args)
+    exit_code = loader.run(args)
+    loader.unload()
+    return exit_code
+
 
 def main():
 
     parser = argparse.ArgumentParser(
-        "Metrics++",
+        "metrixpp",
         description="Analyze C/C++ and Java code to determine code metrics")
 
-    subparsers = parser.add_subparsers(dest="subprogram", required=True)
+    subparsers = parser.add_subparsers(required=True, dest='command')
 
     # collect
     parser_collect = subparsers.add_parser(
         "collect", help="collect code metrics")
 
-    parser_collect.add_argument('metrics', metavar='m', type=int, nargs='+',
-                                help='')
+    parser_collect.add_argument('metrics', metavar='m', type=str, nargs='+',
+                                help='metrics to collect')
 
     # view
-    parser_view = None
+    parser_view = subparsers.add_parser(
+        "view", help="view collected code metrics")
 
     # limit
-    parser_limit = None
+    parser_limit = subparsers.add_parser(
+        "limit", help="limit metrics")
 
-    parser.add_subparsers()
-
-    parser.parse_args()
+    args = parser.parse_args()
 
     os.environ['METRIXPLUSPLUS_INSTALL_DIR'] = str(
         Path(__file__).parent.resolve())
 
-    exemode = None
-    exemode = '-R'
-    if len(sys.argv[1:]) != 0:
-        exemode = sys.argv[1]
-    if exemode != "-R" and exemode != "-D":
-        exemode = '-D'  # TODO implement install and release mode
-        # inject '-D' or '-R' option
-        #profile_args = ['-m', 'cProfile']
-        profile_args = []
-        exit(subprocess.call(itertools.chain(
-            [sys.executable], profile_args, [sys.argv[0], '-D'], sys.argv[1:])))
+    # exemode = None
+    # exemode = '-R'
 
-    command = ""
-    if len(sys.argv[1:]) > 1:
-        command = sys.argv[2]
+    # if len(sys.argv[1:]) != 0:
+    #     exemode = sys.argv[1]
 
-    loader = mpp.internal.loader.Loader()
+    # if exemode != "-R" and exemode != "-D":
+    #     exemode = '-D'  # TODO implement install and release mode
+    #     # inject '-D' or '-R' option
+    #     #profile_args = ['-m', 'cProfile']
+    #     profile_args = []
+    #     exit(subprocess.call(itertools.chain(
+    #         [sys.executable], profile_args, [sys.argv[0], '-D'], sys.argv[1:])))
+
+    command = args.command
+    args = args.metrics
+    logger.info(f"program is executing command: {command}")
+
     mpp_paths = []
-    if 'METRIXPLUSPLUS_PATH' in list(os.environ.keys()):
-        mpp_paths = os.environ['METRIXPLUSPLUS_PATH'].split(os.pathsep)
-    args = loader.load(command, mpp_paths, sys.argv[3:])
-    exit_code = loader.run(args)
-    loader.unload()
+
+    exit_code = execute_command(command, mpp_paths, args)
+
     return exit_code
 
 
@@ -87,4 +97,14 @@ def start():
 
 
 if __name__ == '__main__':
-    start()
+
+    # init
+    mpp.log.set_default_format()
+    p = str(Path(__file__).parent.resolve())
+    os.environ['METRIXPLUSPLUS_INSTALL_DIR'] = p
+
+    metrics = ["--std.code.lines.code", "--std.code.complexity.cyclomatic"]
+    # metrics = ["std.code.complexity.cyclomatic"]
+    paths = []
+
+    execute_command("collect", paths, metrics)
