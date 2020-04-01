@@ -1,9 +1,9 @@
 #
 #    Metrix++, Copyright 2009-2019, Metrix++ Project
 #    Link: https://github.com/metrixplusplus/metrixplusplus
-#    
+#
 #    This file is a part of Metrix++ Tool.
-#    
+#
 
 import re
 import binascii
@@ -11,22 +11,23 @@ import binascii
 import mpp.api
 import mpp.cout
 
+
 class Plugin(mpp.api.Plugin, mpp.api.Parent, mpp.api.IParser, mpp.api.IConfigurable, mpp.api.ICode):
-    
+
     def declare_configuration(self, parser):
         parser.add_option("--std.code.cs.files", default="*.cs",
-                         help="Enumerates filename extensions to match C# files [default: %default]")
-    
+                          help="Enumerates filename extensions to match C# files [default: %default]")
+
     def configure(self, options):
         self.files = options.__dict__['std.code.cs.files'].split(',')
-        self.files.sort() # sorted list goes to properties
-        
+        self.files.sort()  # sorted list goes to properties
+
     def initialize(self):
         mpp.api.Plugin.initialize(self, properties=[
             self.Property('files', ','.join(self.files))
         ])
         self.get_plugin('std.tools.collect').register_parser(self.files, self)
-        
+
     def process(self, parent, data, is_updated):
         is_updated = is_updated or self.is_updated
         count_mismatched_brackets = 0
@@ -34,9 +35,10 @@ class Plugin(mpp.api.Plugin, mpp.api.Parent, mpp.api.IParser, mpp.api.IConfigura
             count_mismatched_brackets = CsCodeParser().run(data)
         self.notify_children(data, is_updated)
         return count_mismatched_brackets
-            
+
+
 class CsCodeParser(object):
-    
+
     regex_cpp = re.compile(r'''
                    //(?=\n|\r\n|\r)                                   # Match C# style comments (empty comment line)
                 |  //.*?(?=\n|\r\n|\r)                                # Match C# style comments
@@ -86,42 +88,47 @@ class CsCodeParser(object):
                                                                       #       to handle template definitions, it is easier in C#
                 | ((?:\n|\r\n|\r)\s*(?:\n|\r\n|\r))                   # Match double empty line
             ''',
-            re.DOTALL | re.MULTILINE | re.VERBOSE
-        )
+                           re.DOTALL | re.MULTILINE | re.VERBOSE
+                           )
 
     # \r\n goes before \r in order to consume right number of lines on Unix for Windows files
     regex_ln = re.compile(r'(\n)|(\r\n)|(\r)')
 
     def run(self, data):
-        self.__init__() # Go to initial state if it is called twice
+        self.__init__()  # Go to initial state if it is called twice
         return self.parse(data)
-        
+
     def finalize_block(self, text, block, block_end):
         if block['type'] != '__global__':
             # do not trim spaces for __global__region
-            space_match = re.match('^\s*', text[block['start']:block_end], re.MULTILINE)
-            block['start'] += space_match.end() # trim spaces at the beginning
+            space_match = re.match(
+                '^\s*', text[block['start']:block_end], re.MULTILINE)
+            block['start'] += space_match.end()  # trim spaces at the beginning
         block['end'] = block_end
 
         start_pos = block['start']
         crc32 = 0
         for child in block['children']:
             # exclude children
-            crc32 = binascii.crc32(text[start_pos:child['start']], crc32)
+            crc32 = binascii.crc32(
+                text[start_pos:child['start']].encode("utf-8"), crc32)
             start_pos = child['end']
-        block['checksum'] = binascii.crc32(text[start_pos:block['end']], crc32) & 0xffffffff # to match python 3
-        
+        block['checksum'] = binascii.crc32(text[start_pos:block['end']].encode(
+            "utf-8"), crc32) & 0xffffffff  # to match python 3
+
     def add_lines_data(self, text, blocks):
         def add_lines_data_rec(self, text, blocks):
             for each in blocks:
                 # add line begin
-                self.total_current += len(self.regex_ln.findall(text, self.total_last_pos, each['start']))
+                self.total_current += len(self.regex_ln.findall(text,
+                                                                self.total_last_pos, each['start']))
                 each['line_begin'] = self.total_current
                 self.total_last_pos = each['start']
                 # process enclosed
                 add_lines_data_rec(self, text, each['children'])
                 # add line end
-                self.total_current += len(self.regex_ln.findall(text, self.total_last_pos, each['end']))
+                self.total_current += len(self.regex_ln.findall(text,
+                                                                self.total_last_pos, each['end']))
                 each['line_end'] = self.total_current
                 self.total_last_pos = each['end']
         self.total_last_pos = 0
@@ -153,43 +160,46 @@ class CsCodeParser(object):
                                 get_type_id(data, each['type']), each['checksum'])
                 add_regions_rec(self, data, each['children'])
         add_regions_rec(self, data, blocks)
-        
+
     def parse(self, data):
-        
+
         def reset_next_block(start):
-            return {'name':'', 'start':start, 'cursor':0, 'type':'', 'inside_attribute':False}
-        
+            return {'name': '', 'start': start, 'cursor': 0, 'type': '', 'inside_attribute': False}
+
         count_mismatched_brackets = 0
-        
+
         text = data.get_content()
-        indent_current = 0;
-        
-        blocks = [{'name':'__global__', 'start':0, 'cursor':0, 'type':'__global__', 'indent_start':indent_current, 'children':[]}]
+        indent_current = 0
+
+        blocks = [{'name': '__global__', 'start': 0, 'cursor': 0,
+                   'type': '__global__', 'indent_start': indent_current, 'children': []}]
         curblk = 0
-        
+
         next_block = reset_next_block(0)
-        
+
         cursor_last_pos = 0
         cursor_current = 1
-        
+
         for m in re.finditer(self.regex_cpp, text):
             # Comment
             if text[m.start()] == '/':
                 data.add_marker(m.start(), m.end(), mpp.api.Marker.T.COMMENT)
-            
+
             # String
             elif text[m.start()] == '"' or text[m.start()] == '\'':
-                data.add_marker(m.start() + 1, m.end() - 1, mpp.api.Marker.T.STRING)
-            
+                data.add_marker(m.start() + 1, m.end() -
+                                1, mpp.api.Marker.T.STRING)
+
             # Preprocessor (including internal comments)
             elif text[m.start()] == ' ' or text[m.start()] == '\t' or text[m.start()] == '#':
-                data.add_marker(m.start(), m.end(), mpp.api.Marker.T.PREPROCESSOR)
+                data.add_marker(m.start(), m.end(),
+                                mpp.api.Marker.T.PREPROCESSOR)
 
             # Statement end
             elif text[m.start()] == ';':
                 # Reset next block name and start
                 next_block['name'] = ""
-                next_block['start'] = m.end() # potential region start
+                next_block['start'] = m.end()  # potential region start
 
             # Block openned by '[' bracket...
             elif text[m.start()] == '[':
@@ -198,7 +208,7 @@ class CsCodeParser(object):
 
             # Block closed by ']' bracket...
             # note: do not care about nesting for simplicity -
-            #       because attribute's statement can not have symbol ']' inside 
+            #       because attribute's statement can not have symbol ']' inside
             elif text[m.start()] == ']':
                 # ... may include attributes, so do not capture function names inside
                 next_block['inside_attribute'] = False
@@ -207,27 +217,27 @@ class CsCodeParser(object):
             elif text[m.start()] == '\n' or text[m.start()] == '\r':
                 # Reset next block start, if has not been named yet
                 if next_block['name'] == "":
-                    next_block['start'] = m.end() # potential region start
+                    next_block['start'] = m.end()  # potential region start
 
             # Block start...
             elif text[m.start()] == '{':
                 # shift indent right
                 indent_current += 1
-                
+
                 # ... if name detected previously
-                if next_block['name'] != '': # - Start of enclosed block
-                    blocks.append({'name':next_block['name'],
-                                   'start':next_block['start'],
-                                   'cursor':next_block['cursor'],
-                                   'type':next_block['type'],
-                                   'indent_start':indent_current,
-                                   'children':[]})
+                if next_block['name'] != '':  # - Start of enclosed block
+                    blocks.append({'name': next_block['name'],
+                                   'start': next_block['start'],
+                                   'cursor': next_block['cursor'],
+                                   'type': next_block['type'],
+                                   'indent_start': indent_current,
+                                   'children': []})
                     next_block = reset_next_block(m.end())
                     curblk += 1
                 # ... reset next block start, otherwise
-                else: # - unknown type of block start
-                    next_block['start'] = m.end() # potential region start
-            
+                else:  # - unknown type of block start
+                    next_block['start'] = m.end()  # potential region start
+
             # Block end...
             elif text[m.start()] == '}':
                 # ... if indent level matches the start
@@ -235,15 +245,17 @@ class CsCodeParser(object):
                     next_block = reset_next_block(m.end())
                     if curblk == 0:
                         mpp.cout.notify(data.get_path(),
-                                         cursor_current + len(self.regex_ln.findall(text, cursor_last_pos, m.start())),
-                                         mpp.cout.SEVERITY_WARNING,
-                                         "Non-matching closing bracket '}' detected.")
+                                        cursor_current +
+                                        len(self.regex_ln.findall(
+                                            text, cursor_last_pos, m.start())),
+                                        mpp.cout.SEVERITY_WARNING,
+                                        "Non-matching closing bracket '}' detected.")
                         count_mismatched_brackets += 1
                         continue
-                    
+
                     self.finalize_block(text, blocks[curblk], m.end())
                     assert(blocks[curblk]['type'] != '__global__')
-                    
+
                     curblk -= 1
                     assert(curblk >= 0)
                     blocks[curblk]['children'].append(blocks.pop())
@@ -252,9 +264,11 @@ class CsCodeParser(object):
                 indent_current -= 1
                 if indent_current < 0:
                     mpp.cout.notify(data.get_path(),
-                                     cursor_current + len(self.regex_ln.findall(text, cursor_last_pos, m.start())),
-                                     mpp.cout.SEVERITY_WARNING,
-                                     "Non-matching closing bracket '}' detected.")
+                                    cursor_current +
+                                    len(self.regex_ln.findall(
+                                        text, cursor_last_pos, m.start())),
+                                    mpp.cout.SEVERITY_WARNING,
+                                    "Non-matching closing bracket '}' detected.")
                     count_mismatched_brackets += 1
                     indent_current = 0
 
@@ -263,9 +277,11 @@ class CsCodeParser(object):
                 if next_block['name'] == "":
                     # - 'name'
                     clearance_pattern = re.compile(r'\s+')
-                    next_block['name'] = clearance_pattern.sub('',m.group('block_name'))
+                    next_block['name'] = clearance_pattern.sub(
+                        '', m.group('block_name'))
                     # - 'cursor'
-                    cursor_current += len(self.regex_ln.findall(text, cursor_last_pos, m.start('block_name')))
+                    cursor_current += len(self.regex_ln.findall(text,
+                                                                cursor_last_pos, m.start('block_name')))
                     cursor_last_pos = m.start('block_name')
                     next_block['cursor'] = cursor_current
                     # - 'type'
@@ -276,14 +292,16 @@ class CsCodeParser(object):
             elif m.group('fn_name') != None:
                 # ... if outside of a function
                 #     (do not detect functions enclosed directly in a function, i.e. without classes)
-                # ... and other name before has not been matched 
+                # ... and other name before has not been matched
                 if blocks[curblk]['type'] != 'function' and (next_block['name'] == "") \
-                       and next_block['inside_attribute'] == False:
+                        and next_block['inside_attribute'] == False:
                     # - 'name'
                     clearance_pattern = re.compile(r'\s+')
-                    next_block['name'] = clearance_pattern.sub('', m.group('fn_name'))
+                    next_block['name'] = clearance_pattern.sub(
+                        '', m.group('fn_name'))
                     # - 'cursor'
-                    cursor_current += len(self.regex_ln.findall(text, cursor_last_pos, m.start('fn_name')))
+                    cursor_current += len(self.regex_ln.findall(text,
+                                                                cursor_last_pos, m.start('fn_name')))
                     cursor_last_pos = m.start('fn_name')
                     # NOTE: cursor could be collected together with line_begin, line_end,
                     # but we keep it here separately for easier debugging of file parsing problems
@@ -297,20 +315,20 @@ class CsCodeParser(object):
         while indent_current > 0:
             # log all
             mpp.cout.notify(data.get_path(),
-                             cursor_current + len(self.regex_ln.findall(text, cursor_last_pos, len(text))),
-                             mpp.cout.SEVERITY_WARNING,
-                             "Non-matching opening bracket '{' detected.")
+                            cursor_current +
+                            len(self.regex_ln.findall(
+                                text, cursor_last_pos, len(text))),
+                            mpp.cout.SEVERITY_WARNING,
+                            "Non-matching opening bracket '{' detected.")
             count_mismatched_brackets += 1
             indent_current -= 1
 
         for (ind, each) in enumerate(blocks):
-            each = each # used
+            each = each  # used
             block = blocks[len(blocks) - 1 - ind]
             self.finalize_block(text, block, len(text))
 
         self.add_lines_data(text, blocks)
         self.add_regions(data, blocks)
-        
-        return count_mismatched_brackets
 
-            
+        return count_mismatched_brackets

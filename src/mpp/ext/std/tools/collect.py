@@ -143,7 +143,7 @@ class DirectoryReader():
                         text = f.read()
                         f.close()
                         checksum = binascii.crc32(
-                            text) & 0xffffffff  # to match python 3
+                            text.encode("utf-8")) & 0xffffffff  # to match python 3
 
                         db_loader = plugin.get_plugin('mpp.dbf').get_loader()
                         (data, is_updated) = db_loader.create_file_data(
